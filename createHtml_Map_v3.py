@@ -95,7 +95,7 @@ def closest_poly_table(data):
                 
     return poly_table
 
-def keep_non_overlapping_polygons(polygons):
+def keep_adjacent_polygons(polygons):
     # Utilisez la fonction de distance de point à point pour trouver les points les plus proches pour chaque point donné.
     # Utilisez un dictionnaire pour stocker les informations de chaque polygone, y compris les coordonnées du premier point, les points les plus proches.
     # Parcourez les polygones et vérifiez s'il y a des recouvrements en utilisant la distance entre les points.
@@ -166,13 +166,11 @@ def htmlCreator():
         df = pd.read_csv(filename)
         
     data = read_df(df) #GoTo 'read_df' with a dataframe argument and return a data dict with this information 'latitude', 'longitude' and 'profondeur'
-    # print(data)
     p_table = closest_poly_table(data) #GoTo 'closest_poly_table' with data and return dict
-    # print(p_table)
-    p_adjacent = keep_non_overlapping_polygons(p_table)
+    p_adjacent = keep_adjacent_polygons(p_table)
     p_non_overlapping = remove_overlapping_polygons(p_adjacent)
+    print(p_non_overlapping)
     # p_adjacent = get_adjacent_non_overlapping_polygons(p_table, 0) #GoTo 'get_adjacent_non_overlapping_polygons' with dict, to a 0 distance and return a dict
-    print('p_non_overlapping---> ' + str(p_non_overlapping))
     #p_non_overlapping---> {'PZ1': {'coordinates': (4.989822, 45.774408), 'profondeur': 10.0, 'points': [[('PZ2', (4.989062, 45.780709)), ('PZ3', (4.980835, 45.778293))]]}, 'PZ4': {'coordinates': (4.958782, 45.770784), 'profondeur': 13.0, 'points': [[('PZ3', (4.980835, 45.778293)), ('PZ1', (4.989822, 45.774408))]]}}
     
     
