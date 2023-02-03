@@ -102,12 +102,12 @@ def keep_adjacent_polygons(polygons):
     # Parcourez les polygones et vérifiez s'il y a des recouvrements en utilisant la distance entre les points.
     # Si un recouvrement est détecté, ne pas ajouter le polygone au dictionnaire de sortie.
     my_dict = {}
+    output_list = []
     for polygon_key, polygon_data in polygons.items():
         my_list = []
         for k, v in polygon_data.items():
             if k == 'coordinates':
                 pt1 = v
-                # print('---> ' + str(pt1))
                 my_dict[polygon_key] = {'coordinates': v, 
                                         'profondeur': '',
                                         'points': ''}
@@ -126,10 +126,11 @@ def keep_adjacent_polygons(polygons):
                 my_list.append([(x[1], x[2]) for x in distances])
                 my_dict[polygon_key]['points'] = my_list
     return my_dict
-                    
+
 def remove_overlapping_polygons(polygons):
     output_dict = {}
     processed_points = []
+    # print("polygons---> " + str(polygons))
     for polygon_key, polygon_data in polygons.items():
         pt1_1 = polygon_data['coordinates']
         pt2_1 = polygon_data['points'][0][0][1]
@@ -140,6 +141,7 @@ def remove_overlapping_polygons(polygons):
             output_dict[polygon_key] = polygon_data
 
         for polygon_key_2, polygon_data_2 in polygons.items():
+            # print(polygon_data_2)
             if polygon_key != polygon_key_2:
                 pt1_2 = polygon_data_2['coordinates']
                 pt2_2 = polygon_data_2['points'][0][0][1]
@@ -149,7 +151,89 @@ def remove_overlapping_polygons(polygons):
                     is_overlapping = True
         if not is_overlapping:
             output_dict[polygon_key] = polygon_data
+    # print('output-dict---> ' + str(output_dict))
     return output_dict
+
+def extract_centroid(centroid):
+    point_string = str(centroid)
+    point_parts = point_string.split(' ')
+    latitude = float(point_parts[2][:-1])
+    longitude = float(point_parts[1][1:])
+    coordinates = (latitude, longitude)
+    return coordinates
+
+def create_Map(p_non_overlapping):
+    output_polygon = []
+    output_polygon_dict = {}
+    first_key = next(iter(p_non_overlapping)) #Récupère la première clé du dict
+    
+    for k, v in p_non_overlapping.items():
+        if k == first_key:
+            coordonnees = (v['coordinates'][1],
+                           v['coordinates'][0])
+            
+            m = folium.Map(location=coordonnees,
+                            zoom_start=16,
+                            zoom_control=(True))
+    return m
+
+
+
+def create_PointsPolygons(p_non_overlapping, m):
+    output_polygon_dict =  {}
+    output_polygon = []
+    points = []
+    for k, v in p_non_overlapping.items():
+        i = 1
+        pt1 = (v['coordinates'][0],
+                v['coordinates'][1])
+        
+        points.append(pt1)
+    
+        name = k
+        ls_Dict = {}
+        profondeur_pt1 = float(p_non_overlapping[k]['profondeur'])
+        for k1, v1 in v.items():
+            if k1 == 'points':
+                for elt in v1:
+                    pt2 = ((elt[0][1][0]), (elt[0][1][1]))
+                    points.append(pt2)
+                    ls1 = LineString([pt1, pt2])
+                    profondeur_pt2 = float(p_non_overlapping[(elt[0][0])]['profondeur'])
+                    ecart_pt1pt2 = profondeur_pt1 - profondeur_pt2
+                    pt3 = ((elt[1][1][0]), (elt[1][1][1]))
+                    points.append(pt3)
+                    profondeur_pt3 = float(p_non_overlapping[(elt[1][0])]['profondeur'])
+                    ecart_pt2pt3 = profondeur_pt2 - profondeur_pt3
+                    ecart_pt3pt1 = profondeur_pt3 - profondeur_pt1
+                    ls2 = LineString([pt2, pt3])
+                    ls3 = LineString([pt3, pt1])
+                    
+                    name = name + str(v1[0][0][0]) + str(v1[0][1][0])
+                    ls_Dict['LS_' + name] = [ls1, ls2, ls3]
+                    ls_Dict['LS_' + name + '_ecart'] = [ecart_pt1pt2, 
+                                                        ecart_pt2pt3, 
+                                                        ecart_pt3pt1]
+                    
+                    my_Polygon = Polygon([pt1, pt2, pt3])
+                    is_overlapping = False
+                    if output_polygon:
+                        for p in output_polygon:
+                            if (my_Polygon.overlaps(p)) or (p.overlaps(my_Polygon)):
+                                is_overlapping = True
+                                
+                        if not is_overlapping:
+                            output_polygon.append(my_Polygon)
+                            output_polygon_dict[name] = my_Polygon
+                            output_polygon_dict['LS_' + name] = ls_Dict['LS_' + name]
+                            output_polygon_dict['LS_' + name + '_ecart'] = ls_Dict['LS_' + name + '_ecart']
+                            
+                    else:
+                        output_polygon.append(my_Polygon)
+                        output_polygon_dict[name] = my_Polygon
+                        output_polygon_dict['LS_' + name] = ls_Dict['LS_' + name]
+                        output_polygon_dict['LS_' + name + '_ecart'] = ls_Dict['LS_' + name + '_ecart']
+    return output_polygon_dict, points
 
 def htmlCreator():
     folderFiles2 = searchFolder('\\test.html')
@@ -169,32 +253,133 @@ def htmlCreator():
     p_table = closest_poly_table(data) #GoTo 'closest_poly_table' with data and return dict
     p_adjacent = keep_adjacent_polygons(p_table)
     p_non_overlapping = remove_overlapping_polygons(p_adjacent)
-    
-    first_key = next(iter(p_non_overlapping)) #Récupère la première clé du dict
-    for k, v in p_non_overlapping.items():
-        if k == first_key:
-            coordonnees = (v['coordinates'][1],
-                           v['coordinates'][0])
 
-            m = folium.Map(location=coordonnees,
-                            zoom_start=16,
-                            zoom_control=(True))
-            
-            for k1, v1 in p_non_overlapping.items():
-                pt1 = (v1['coordinates'][0],
-                       v1['coordinates'][1])
-                print('pt1---> ' + str(pt1))
+    
+    output_polygon = []
+    first_key = next(iter(p_non_overlapping)) #Récupère la première clé du dict
+    
+    m = create_Map(p_non_overlapping)
+    output_polygon_dict, points = create_PointsPolygons(p_non_overlapping, m)
+    
+    print('points---> ' + str(points))
+    
+    for k, v in output_polygon_dict.items():
+        if '_' not in k:
+            geo_p = folium.GeoJson(data = v,
+                                   style_function = (lambda x: {'fillColor': 'blue'}))
+            for elt in points:
+                coord = (elt[1], elt[0])
+                folium.Marker(location = coord).add_to(geo_p)
+    
+    
+        geo_p.add_to(m)
+
+    
+
+    # for k1, v1 in p_non_overlapping.items():
+    #     pt1 = (v1['coordinates'][0],
+    #             v1['coordinates'][1])
+    #     name = k1
+    #     # is_overlapping = False
+    #     for k2, v2 in v1.items():
+    #         if k2 == 'points':
+    #             for elt in v2:
+    #                 pt2 = ((elt[0][1][0]), (elt[0][1][1]))
+    #                 pt3 = ((elt[1][1][0]), (elt[1][1][1]))
+    #                 name = name + str(v2[0][0][0]) + str(v2[0][1][0])
+    #                 my_Polygon = Polygon([pt1, pt2, pt3])
+    #                 is_overlapping = False
+    #                 if output_polygon:
+    #                     for p in output_polygon:
+    #                         # print(type(p), type(my_Polygon))
+    #                         if (my_Polygon.overlaps(p)) or (p.overlaps(my_Polygon)):
+    #                             is_overlapping = True
+                                
+    #                     if not is_overlapping:
+    #                         output_polygon.append(my_Polygon)
+    #                         output_polygon_dict[name] = my_Polygon
+    #                 else:
+    #                     output_polygon.append(my_Polygon)
+    #                     output_polygon_dict[name] = my_Polygon
                 
-                for k2, v2 in v1.items():
-                    if k2 == 'points':
-                        for elt in v2:
-                            # print(elt)
-                            pt2 = ((elt[0][1][0]), (elt[0][1][1]))
-                            pt3 = ((elt[1][1][0]), (elt[1][1][1]))
-                            my_Polygon = Polygon([pt1, pt2, pt3])
-                            geo_p = folium.GeoJson(data = my_Polygon,
-                                                   style_function=(lambda x: {'fillColor': 'orange'}))
-                            geo_p.add_to(m)
+    #                 # geo_p = folium.GeoJson(data=my_Polygon, style_function=(lambda x: {'fillColor': 'orange'}))
+    #                 # centroid = extract_centroid(my_Polygon.centroid)
+    #                 # folium.Marker(location=centroid, tooltip=name).add_to(geo_p)
+    #                 # geo_p.add_to(m)
+                    
+    # # print(output_polygon_dict)
+    #         for k, v in output_polygon_dict.items():
+                
+    #             geo_p = folium.GeoJson(data = v, 
+    #                                    style_function = (lambda x: {'fillColor': 'orange'}))
+    #             centroid = extract_centroid(v.centroid)
+    #             html = """Polygône: """ + k + """
+    #             </br>
+    #             Coordonnées: """ + str(v) + """
+    #             </br>
+    #             Aire : """ + str(v.area) + """
+    #             </br>
+    #             Coord. centroïd: """ + str(centroid) + """
+    #             </br>
+    #             """ + str(v.boundary.wkt)
+                
+    #             print(output_polygon_dict['PZ1PZ2PZ5'])
+                
+    #             Line_String = v.boundary
+    #             print(Line_String.length)
+    #             pt = Line_String.interpolate(0.01, True)
+    #             print(pt.bounds)
+                
+                
+
+            
+                
+                
+                
+                
+    #             iframe = folium.IFrame(html = html, 
+    #                                    width = 400, 
+    #                                    height = 250)
+    #             popup = folium.Popup(iframe, max_width = 500)
+    #             folium.Marker(location = centroid, 
+    #                           tooltip = k, 
+    #                           popup = popup).add_to(geo_p)
+    #             geo_p.add_to(m)
+            
+
+    
+    
+                
+                # for k2, v2 in v1.items():
+                #     if k2 == 'points':
+                #         for elt in v2:
+                #             is_overlapping = False
+                #             pt2 = ((elt[0][1][0]), (elt[0][1][1]))
+                #             pt3 = ((elt[1][1][0]), (elt[1][1][1]))
+                #             name = name + str(v2[0][0][0]) + str(v2[0][1][0])
+                #             my_Polygon = Polygon([pt1, pt2, pt3])
+                #             if output_polygon:
+                #                 output_polygon.append(my_Polygon)
+                #             else:
+                #                 for elt in output_polygon:
+                #                     if (my_Polygon.covers(elt)) or (elt.covers(my_Polygon)):
+                #                         is_overlapping = True
+                            
+                #                 if not is_overlapping:
+                #                     output_polygon.append(my_Polygon)
+                                        
+                #             for elt in output_polygon:
+                #                 geo_p = folium.GeoJson(data = elt,
+                #                                        style_function=(lambda x: {'fillColor': 'orange'})
+                #                                        )
+                            
+                #                 centroid = extract_centroid(elt.centroid)
+                            
+                #                 folium.Marker(location = centroid,
+                #                               tooltip = name).add_to(geo_p)
+
+                            
+                #             geo_p.add_to(m)
                     
 
     
