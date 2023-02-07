@@ -178,28 +178,29 @@ def create_Map(p_non_overlapping):
                             tiles = 'OpenStreetMap')
     return m
 
-
-
 def create_PointsPolygons(p_non_overlapping, m):
     output_polygon_dict =  {}
     output_polygon = []
     points = []
+    Dict = {}
     for k, v in p_non_overlapping.items():
         i = 1
         pt1 = (v['coordinates'][0],
                 v['coordinates'][1])
         
         points.append(pt1)
-    
         name = k
         ls_Dict = {}
         profondeur_pt1 = float(p_non_overlapping[k]['profondeur'])
         for k1, v1 in v.items():
+            if k1 == 'profondeur':
+                Dict[k] = v1
             if k1 == 'points':
                 for elt in v1:
                     pt2 = ((elt[0][1][0]), (elt[0][1][1]))
                     points.append(pt2)
                     ls1 = LineString([pt1, pt2])
+
                     profondeur_pt2 = float(p_non_overlapping[(elt[0][0])]['profondeur'])
                     ecart_pt1pt2 = profondeur_pt1 - profondeur_pt2
                     pt3 = ((elt[1][1][0]), (elt[1][1][1]))
@@ -210,11 +211,12 @@ def create_PointsPolygons(p_non_overlapping, m):
                     ls2 = LineString([pt2, pt3])
                     ls3 = LineString([pt3, pt1])
                     
-                    name = name + str(v1[0][0][0]) + str(v1[0][1][0])
+                    name = name + '+' + str(v1[0][0][0]) + '+' + str(v1[0][1][0])
                     ls_Dict['LS_' + name] = [ls1, ls2, ls3]
                     ls_Dict['LS_' + name + '_ecart'] = [ecart_pt1pt2, 
                                                         ecart_pt2pt3, 
                                                         ecart_pt3pt1]
+                    
                     
                     my_Polygon = Polygon([pt1, pt2, pt3])
                     is_overlapping = False
@@ -228,17 +230,35 @@ def create_PointsPolygons(p_non_overlapping, m):
                             output_polygon_dict[name] = my_Polygon
                             output_polygon_dict['LS_' + name] = ls_Dict['LS_' + name]
                             output_polygon_dict['LS_' + name + '_ecart'] = ls_Dict['LS_' + name + '_ecart']
-                            
                     else:
                         output_polygon.append(my_Polygon)
                         output_polygon_dict[name] = my_Polygon
                         output_polygon_dict['LS_' + name] = ls_Dict['LS_' + name]
                         output_polygon_dict['LS_' + name + '_ecart'] = ls_Dict['LS_' + name + '_ecart']
-    return output_polygon_dict, points
+                                    
+    return output_polygon_dict, points, Dict
 
+def create_html(k, v):
+    html1 = """Polygon: """ + k + """
+    </br>Area: """ + str(round(v.area, 6))
+    return html1
+
+def create_iframe(html):
+    return folium.IFrame(html = html,
+                            width = 200,
+                            height = 125)
+
+def create_popup(iframe):
+    return folium.Popup(iframe, max_width = 250)
+    
+def create_marker(centroid, popup, geo_p):
+    return folium.Marker(location = centroid, 
+                         popup = popup).add_to(geo_p)
+    
 def htmlCreator():
     folderFiles2 = searchFolder('\\test.html')
     folderFiles3 = searchFolder('\\out.geojson')
+    existing_polylines = []
 
     currentFolder = os.getcwd()
     if os.path.isdir(currentFolder) == True:
@@ -255,61 +275,103 @@ def htmlCreator():
     p_adjacent = keep_adjacent_polygons(p_table)
     p_non_overlapping = remove_overlapping_polygons(p_adjacent)
 
-    
     output_polygon = []
     first_key = next(iter(p_non_overlapping)) #Récupère la première clé du dict
     
     m = create_Map(p_non_overlapping)
-    output_polygon_dict, points = create_PointsPolygons(p_non_overlapping, m)
-    # print(output_polygon_dict)
-    
-    for k, v in output_polygon_dict.items():
-        if '_' not in k:
-            geo_p = folium.GeoJson(data = v,
+    output_polygon_dict, points, Dict = create_PointsPolygons(p_non_overlapping, m)
+
+    for k_poly, v_poly in output_polygon_dict.items():
+        processed_polylines = []
+        if '_' not in k_poly:
+            geo_p = folium.GeoJson(data = v_poly,
                                    style_function = (lambda x: {'fillColor': 'blue', 
                                                                 'weight':0.5}))
+            geo_p.add_to(m)
             
-            centroid = extract_centroid(v.centroid)
-            html1 = """Poygône: """ + k + """
-            </br>Aire: """ + str(round(v.area, 6))
-            iframe1 = folium.IFrame(html = html1,
-                                    width = 200,
-                                    height = 125)
-            
-            popup1 = folium.Popup(iframe1, max_width = 250)
-            folium.Marker(location = centroid, 
-                          popup = popup1, 
-                          color='red').add_to(geo_p)
-            cle = k
-            for k2, v2 in output_polygon_dict.items():
+            centroid = extract_centroid(v_poly.centroid)
+            html1 = create_html(k_poly, v_poly)
+            iframe1 = create_iframe(html1)
+            popup1 = create_popup(iframe1)
+            marker1 = create_marker(centroid, popup1, geo_p)
+        
+        elif '_' in k_poly:
+            if ('ecart' not in k_poly and 'LS' in k_poly):
                 i = 0
-                if '_' in k2 and cle in k2 and 'LS' in k2:
-                    if ('ecart' not in k2):
-                        for elt in v2:
-                            line = elt
-                            line.coords = [(y, x) for x, y in line.coords]
-                            folium.PolyLine(locations=line.coords[:], 
-                                            color='red', 
-                                            dash_array = '10, 5', 
-                                            tooltip = 'test',
-                                            weight = 1).add_to(m)
+                for elt in v_poly:
+                    i += 1
+                    line = elt
+                    line.coords = [(y, x) for x, y in line.coords]
+                    fp = folium.PolyLine(locations = line.coords[:],
+                                         color = '#FF1100',
+                                         dash_array = '10, 10',
+                                         weight = 2)
+                    if fp.locations not in processed_polylines:
+                        processed_polylines.append(fp.locations)
+                        fp.add_to(m)
+                    else:
+                        v_poly.pop[i]
+    print(output_polygon_dict)
                         
-                            for k3, v3 in output_polygon_dict.items():
-                                tot_length = 0
-                                if '_' in k3 and cle in k3 and 'LS' in k3:
-                                    if ('ecart' in k3):
-                                        ecart_between_points = float(line.length)/float(abs(v3[i]))
-                                        while float(tot_length) < float(line.length):
-                                            if tot_length > 0:
-                                                new_point = line.interpolate(tot_length, False)
-                                                coordins = (new_point.x, new_point.y)
-                                                i_con = folium.Icon(color = 'green')
-                                                folium.Marker(location = coordins,
-                                                              icon = i_con).add_to(geo_p)
-                                            tot_length += ecart_between_points
-                                            
+    #         cle = k
+    #         for k2, v2 in output_polygon_dict.items():
+    #             if '_' in k2 and cle in k2 and 'LS' in k2:
+    #                 if ('ecart' not in k2):
+    #                     i = 0
+    #                     for elt in v2:
+    #                         i += 1
+    #                         line = elt
+    #                         line.coords = [(y, x) for x, y in line.coords]
+    #                         fp = folium.PolyLine(locations = line.coords[:], 
+    #                                         color = '#FF1100', 
+    #                                         dash_array = '10, 10',
+    #                                         weight = 2)
+    #                         if fp.locations not in existing_polylines:
+    #                             existing_polylines.append(fp.locations)
+    #                             fp.add_to(m)
+    #                         else:
+    #                             v2.pop(i)
+                                
+                        
+                                
+
+
             
+                            # for k3, v3 in output_polygon_dict.items():
+                            #     tot_length = 0
+                            #     i = 0
+                            #     print(k3)
+                            #     if '_' in k3 and cle in k3 and 'LS' in k3:
+                            #         if ('ecart' in k3):
+                            #             c = str(k3.split('_')[1][0:3])
+                            #             #Valable uniquement pour des point nommés de 3 caractères
+                            #             depthValue = Dict[c]
+                            #             ecart_between_points = float(line.length)/float(abs(v3[i]))
                                         
+                            #             while float(tot_length) < float(line.length):
+                            #                 if tot_length > 0:
+                            #                     if (v3[i]) > 0:
+                            #                         depthValue += -1
+                            #                     elif (v3[i]) < 0:
+                            #                         depthValue += +1
+                                                    
+                            #                     html2 = """Profondeur: """ + str(depthValue)
+                            #                     iframe2 = folium.IFrame(html = html2,
+                            #                                             width = 200,
+                            #                                             height = 125)
+                            #                     popup2 = folium.Popup(iframe2, max_width = 250)
+                            #                     new_point = line.interpolate(tot_length, False)
+                            #                     coordins = (new_point.x, new_point.y)
+                            #                     i_con = folium.Icon(color = 'green')
+                            #                     folium.Marker(location = coordins,
+                            #                                   icon = i_con, 
+                            #                                   popup = popup2).add_to(geo_p)
+                                                
+                            #                 tot_length += ecart_between_points
+                            #             i += 1
+                                    
+            
+                    
 
                             # for k3, v3 in output_polygon_dict.items():
                             #     tot_length = 0
@@ -356,8 +418,9 @@ def htmlCreator():
             #                   popup = popup).add_to(geo_p)
 
     
+
     
-        geo_p.add_to(m)
+
 
     
 
